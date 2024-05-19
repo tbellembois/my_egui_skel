@@ -1,3 +1,3 @@
-pub(crate) mod myapp;
+pub mod myapp;
 pub(crate) mod pages;
 pub(crate) mod state;
