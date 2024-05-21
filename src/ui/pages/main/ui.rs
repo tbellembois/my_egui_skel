@@ -1,13 +1,12 @@
-use crate::{
-    error::apperror::AppError,
-    ui::myapp::Myapp,
-    worker::message::{ToWorker, ToWorkerMessage},
-};
+use crate::ui::{app::App, pages::product, state::Page};
 use egui::{Frame, RichText};
-use log::error;
+use rust_i18n::t;
 
-pub fn update(app: &mut Myapp, ctx: &egui::Context, frame: &mut eframe::Frame) {
-    egui::TopBottomPanel::top("my_panel")
+pub fn update(app: &mut App, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    //
+    // Render top panel with info/error message, menu, theme switcher and locale switcher.
+    //
+    egui::TopBottomPanel::top("info_error_panel")
         .min_height(40.)
         .max_height(40.)
         .show_separator_line(true)
@@ -34,71 +33,78 @@ pub fn update(app: &mut Myapp, ctx: &egui::Context, frame: &mut eframe::Frame) {
                 );
             }
 
-            // Switch theme.
-            egui::ComboBox::from_id_source("settings_theme_combo_box")
-                .width(200.0)
-                .selected_text(app.state.active_theme.name())
-                .show_ui(ui, |ui_combobox| {
-                    for theme in app.themes.iter() {
-                        let res: egui::Response = ui_combobox.selectable_value(
-                            &mut app.state.active_theme,
-                            theme.clone(),
-                            theme.name(),
-                        );
-                        if res.changed() {
-                            ui_combobox
-                                .ctx()
-                                .set_style(app.state.active_theme.custom_style());
+            // Switch locale and theme.
+            ui.horizontal(|ui| {
+                // Switch locale.
+                let locales = rust_i18n::available_locales!();
+                for (i, locale) in locales.iter().enumerate() {
+                    if ui
+                        .selectable_value(&mut app.state.active_locale, i.to_string(), *locale)
+                        .changed()
+                    {
+                        rust_i18n::set_locale(locale);
+                        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Title(
+                            t!("My egui App").to_string(),
+                        ));
+                    }
+                }
+
+                // Switch theme.
+                egui::ComboBox::from_id_source("settings_theme_combo_box")
+                    .width(200.0)
+                    .selected_text(app.state.active_theme.name())
+                    .show_ui(ui, |ui_combobox| {
+                        for theme in app.themes.iter() {
+                            let res: egui::Response = ui_combobox.selectable_value(
+                                &mut app.state.active_theme,
+                                theme.clone(),
+                                theme.name(),
+                            );
+                            if res.changed() {
+                                ui_combobox
+                                    .ctx()
+                                    .set_style(app.state.active_theme.custom_style());
+                            }
                         }
+                    });
+            });
+
+            // Render menu.
+            egui::menu::bar(ui, |ui| {
+                ui.menu_button(t!("bookmarks"), |ui| {
+                    if ui.button("Save").clicked() {
+                        //functionality
+                    }
+                    if ui.button("Quit").clicked() {
+                        std::process::exit(0);
                     }
                 });
 
-            // Ferris logo.
-            ui.add_sized(
-                [200., 70.],
-                egui::Image::new(egui::include_image!("../../media/ferris.svg")),
-            );
-
-            // User name input.
-            ui.horizontal(|ui| {
-                ui.label("enter your name");
-                ui.add_sized(
-                    [400., 30.],
-                    egui::TextEdit::singleline(&mut app.user_name_input)
-                        .hint_text("firstname and lastname"),
-                );
+                ui.menu_button("Edit", |ui| {
+                    if ui.button("Cut").clicked() {
+                        //functionality
+                    }
+                    if ui.button("Copy").clicked() {
+                        //functionality
+                    }
+                    if ui.button("Paste").clicked() {
+                        //funtionality
+                    }
+                })
             });
+        });
 
-            // Say hello button.
-            let button = egui::Button::new("say hello");
-            if ui.add_sized([150., 30.], button).clicked() {
-                app.user_name = Some(app.user_name_input.clone());
-            }
-
-            // Hello.
-            if let Some(user_name) = app.user_name.clone() {
-                ui.label(format!("hello {}!", user_name));
-            }
-
-            // Ping button.
-            let button = egui::Button::new("ping");
-            if ui.add_sized([150., 30.], button).clicked() {
-                let mayerr_send = app.sender.as_ref().unwrap().send(ToWorker {
-                    message: ToWorkerMessage::Ping,
-                });
-
-                if let Err(e) = mayerr_send {
-                    error!("error sending ping: {e}");
-                    app.current_error = Some(AppError::ChannelSendError(e.to_string()));
-                }
-            }
-
-            // Trigger error button.
-            let button = egui::Button::new("trigger error");
-            if ui.add_sized([150., 30.], button).clicked() {
-                app.current_error = Some(AppError::InternalError(
-                    "something wrong happened".to_string(),
-                ))
-            }
+    //
+    // Render active page.
+    //
+    egui::CentralPanel::default()
+        .frame(Frame {
+            inner_margin: app.state.active_theme.margin_style().into(),
+            fill: app.state.active_theme.bg_primary_color_visuals(),
+            stroke: egui::Stroke::new(1.0, app.state.active_theme.bg_secondary_color_visuals()),
+            ..Default::default()
+        })
+        .show(ctx, |ui| match app.state.active_page {
+            Page::ProductList => product::list::update(app, ctx, frame, ui),
         });
 }

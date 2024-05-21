@@ -1,37 +1,20 @@
-use super::state::{ApplicationState, Page};
-use crate::{
-    error::apperror::AppError,
-    ui::pages::main,
-    worker::{
-        builder::Worker,
-        message::{ToApp, ToAppMessage, ToWorker},
-    },
-};
+use super::state::ApplicationState;
+use crate::{error::apperror::AppError, ui::pages::main};
 use eframe::CreationContext;
 use egui_aesthetix::{
     themes::{CarlDark, StandardDark, StandardLight},
     Aesthetix,
 };
-use std::{
-    rc::Rc,
-    sync::{
-        mpsc::{self, Receiver, Sender},
-        Once,
-    },
-    thread,
-};
+use poll_promise::Promise;
+use rust_i18n::t;
+use std::{rc::Rc, sync::Once};
 
 static START: Once = Once::new();
 
 #[derive(Default)]
-pub struct Myapp {
+pub struct App {
     // Application state.
     pub state: ApplicationState,
-
-    // Channels for communication beetween
-    // application (GUI) and worker.
-    pub sender: Option<Sender<ToWorker>>,
-    receiver: Option<Receiver<ToApp>>,
 
     // Holds the supported themes that the user can switch between.
     pub themes: Vec<Rc<dyn Aesthetix>>,
@@ -41,28 +24,15 @@ pub struct Myapp {
     // Current info if one.
     pub current_info: Option<String>,
 
-    // User name input.
-    pub user_name_input: String,
-    // User name.
-    pub user_name: Option<String>,
+    // Hacker news feeds.
+    pub hacker_news: Option<String>,
+
+    // Request hacker news promise.
+    pub promise_hacker_news: Option<Promise<Result<String, String>>>,
 }
 
-impl Myapp {
+impl App {
     pub fn new(cc: &CreationContext) -> Self {
-        // Create channels.
-        let (app_tx, app_rx) = mpsc::channel();
-        let (worker_tx, worker_rx) = mpsc::channel();
-
-        dbg!("Spawning new worker.");
-
-        // Spawn a thread with a new worker.
-        let context = cc.egui_ctx.clone();
-        thread::spawn(move || {
-            Worker::new(worker_tx, app_rx, context).init();
-        });
-
-        dbg!("New worker spawned.");
-
         // Load custom fonts and styles.
         setup_custom_fonts(&cc.egui_ctx);
 
@@ -78,41 +48,35 @@ impl Myapp {
         };
 
         // Create application state.
-        let state = ApplicationState::new(active_theme);
+        let state = ApplicationState::new(active_theme, &rust_i18n::locale());
 
         // Initialize the custom theme/styles for egui.
         cc.egui_ctx.set_style(state.active_theme.custom_style());
 
         // Create application.
-        Myapp {
-            sender: Some(app_tx),
-            receiver: Some(worker_rx),
+        App {
+            state,
             themes,
             ..Default::default()
         }
     }
 }
 
-impl eframe::App for Myapp {
+impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        // Check for ToApp messages.
-        if let Some(receiver) = &self.receiver {
-            let maybe_message = match receiver.try_recv() {
-                Ok(message) => Some(message),
-                Err(e) => match e {
-                    mpsc::TryRecvError::Empty => None,
-                    mpsc::TryRecvError::Disconnected => {
-                        self.current_error = Some(AppError::ChannelClosed);
-                        None
-                    }
-                },
-            };
-
-            if let Some(message) = maybe_message {
-                println!("received = {:?}", message);
-                match message.message {
-                    ToAppMessage::Pong => self.current_info = Some("pong".to_string()),
-                    ToAppMessage::Error(e) => self.current_error = Some(e), //FIXME: handle fatal errors
+        // Check for promises.
+        if let Some(p) = &self.promise_hacker_news {
+            match p.ready() {
+                None => (),
+                Some(try_hacker_news) => {
+                    match try_hacker_news {
+                        Ok(hacker_news) => {
+                            self.current_info = Some(t!("fetched_hacker_news").to_string());
+                            self.hacker_news = Some(hacker_news.clone());
+                            self.promise_hacker_news = None;
+                        }
+                        Err(e) => self.current_error = Some(AppError::InternalError(e.to_string())),
+                    };
                 }
             }
         }
@@ -120,10 +84,8 @@ impl eframe::App for Myapp {
         // Do one time startup job.
         START.call_once(|| {});
 
-        // Render active page.
-        match self.state.active_page {
-            Page::Main => main::ui::update(self, ctx, frame),
-        }
+        // Render UI.
+        main::ui::update(self, ctx, frame);
     }
 }
 

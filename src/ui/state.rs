@@ -5,7 +5,7 @@ use std::rc::Rc;
 #[derive(Debug, Default)]
 pub enum Page {
     #[default]
-    Main,
+    ProductList,
 }
 
 /// Application state.
@@ -15,13 +15,16 @@ pub struct ApplicationState {
     pub active_page: Page,
     // The active theme.
     pub active_theme: Rc<dyn Aesthetix>,
+    // The active locale.
+    pub active_locale: String,
 }
 
 impl Default for ApplicationState {
     fn default() -> ApplicationState {
         Self {
-            active_page: Page::Main,
+            active_page: Page::ProductList,
             active_theme: Rc::new(StandardLight),
+            active_locale: String::from("en-GB"),
         }
     }
 }
@@ -29,10 +32,11 @@ impl Default for ApplicationState {
 impl ApplicationState {
     /// Create a new state with an active theme
     #[must_use]
-    pub const fn new(active_theme: Rc<dyn Aesthetix>) -> Self {
+    pub fn new(active_theme: Rc<dyn Aesthetix>, active_locale: &str) -> Self {
         Self {
-            active_page: Page::Main,
+            active_page: Page::ProductList,
             active_theme,
+            active_locale: active_locale.to_string(),
         }
     }
 }

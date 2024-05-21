@@ -1,0 +1,5 @@
+_version: 1
+bookmarks: "bookmarks"
+button_hacker_news: " fetch hacker news feeds"
+fetch_hacker_news: "fetching hacker news feeds"
+fetched_hacker_news: "hacker news feeds fetched"
